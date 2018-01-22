@@ -21,94 +21,90 @@ in  let gitHub-project = ./dhall/gitHubProject.dhall
 
 in    gitHub-project { owner = "ocharles", repo = "dhall-to-cabal" }
     ⫽ { executables =
-          [   ./dhall/defaults/Executable.dhall 
-            ⫽ { build-dependencies =
-                  [ common-deps.base
-                  , { bounds = anyVersion, package = "dhall-to-cabal" }
-                  , { bounds  =
-                        unionVersionRanges
-                        (majorBoundVersion [ +0, +13, +2 ])
-                        (majorBoundVersion [ +0, +14 ])
-                    , package = "optparse-applicative"
-                    }
-                  , common-deps.text
-                  , common-deps.dhall
-                  , common-deps.Cabal
-                  ]
-              , hs-source-dirs     = [ "exe" ]
-              , main-is            = "Main.hs"
-              , name               = "dhall-to-cabal"
-              , other-extensions   = [ extensions.NamedFieldPuns {=} ]
-              }
-          ]
+          { dhall-to-cabal =
+                ./dhall/defaults/Executable.dhall 
+              ⫽ { build-dependencies =
+                    [ common-deps.base
+                    , { bounds = anyVersion, package = "dhall-to-cabal" }
+                    , { bounds  =
+                          unionVersionRanges
+                          (majorBoundVersion [ +0, +13, +2 ])
+                          (majorBoundVersion [ +0, +14 ])
+                      , package = "optparse-applicative"
+                      }
+                    , common-deps.text
+                    , common-deps.dhall
+                    , common-deps.Cabal
+                    ]
+                , hs-source-dirs     = [ "exe" ]
+                , main-is            = "Main.hs"
+                , other-extensions   = [ extensions.NamedFieldPuns {=} ]
+                }
+          }
       , library     =
-          [   ./dhall/defaults/Library.dhall 
-            ⫽ { build-dependencies =
-                  [ common-deps.base
-                  , common-deps.Cabal
-                  , common-deps.dhall
-                  , common-deps.text
-                  , common-deps.bytestring
-                  , { bounds  = majorBoundVersion [ +0, +5 ]
-                    , package = "containers"
-                    }
-                  , { bounds  = majorBoundVersion [ +0, +12 ]
-                    , package = "vector"
-                    }
-                  , { bounds  = majorBoundVersion [ +1, +7 ]
-                    , package = "trifecta"
-                    }
-                  , { bounds  = majorBoundVersion [ +0, +3 ]
-                    , package = "text-format"
-                    }
-                  , { bounds  = majorBoundVersion [ +0, +5, +2 ]
-                    , package = "transformers"
-                    }
-                  ]
-              , compiler-options   =
-                    ./dhall/defaults/CompilerOptions 
-                  ⫽ { GHC =
-                        { build-options =
-                            [ "-Wall", "-fno-warn-name-shadowing" ]
-                        }
-                    }
-              , exposed-modules    = [ "Distribution.Package.Dhall" ]
-              , hs-source-dirs     = [ "lib" ]
-              , other-extensions   =
-                  [ extensions.ApplicativeDo {=}
-                  , extensions.GADTs {=}
-                  , extensions.GeneralizedNewtypeDeriving {=}
-                  , extensions.LambdaCase {=}
-                  , extensions.OverloadedStrings {=}
-                  , extensions.RecordWildCards {=}
-                  , extensions.TypeApplications {=}
-                  ]
-              , other-modules      = [ "Dhall.Extra" ]
-              }
-          ] : Optional ./dhall/types/Library 
+            ./dhall/defaults/Library.dhall 
+          ⫽ { build-dependencies =
+                [ common-deps.base
+                , common-deps.Cabal
+                , common-deps.dhall
+                , common-deps.text
+                , common-deps.bytestring
+                , { bounds  = majorBoundVersion [ +0, +5 ]
+                  , package = "containers"
+                  }
+                , { bounds = majorBoundVersion [ +0, +12 ], package = "vector" }
+                , { bounds  = majorBoundVersion [ +1, +7 ]
+                  , package = "trifecta"
+                  }
+                , { bounds  = majorBoundVersion [ +0, +3 ]
+                  , package = "text-format"
+                  }
+                , { bounds  = majorBoundVersion [ +0, +5, +2 ]
+                  , package = "transformers"
+                  }
+                ]
+            , compiler-options   =
+                  ./dhall/defaults/CompilerOptions 
+                ⫽ { GHC =
+                      { build-options = [ "-Wall", "-fno-warn-name-shadowing" ]
+                      }
+                  }
+            , exposed-modules    = [ "Distribution.Package.Dhall" ]
+            , hs-source-dirs     = [ "lib" ]
+            , other-extensions   =
+                [ extensions.ApplicativeDo {=}
+                , extensions.GADTs {=}
+                , extensions.GeneralizedNewtypeDeriving {=}
+                , extensions.LambdaCase {=}
+                , extensions.OverloadedStrings {=}
+                , extensions.RecordWildCards {=}
+                , extensions.TypeApplications {=}
+                ]
+            , other-modules      = [ "Dhall.Extra" ]
+            }
       , license     = licenses.MIT {=}
       , package     = { name = "dhall-to-cabal", version = [ +0, +1, +0 ] }
       , tests       =
-          [   ./dhall/defaults/TestSuite.dhall 
-            ⫽ { build-dependencies =
-                  [ common-deps.bytestring
-                  , common-deps.base
-                  , common-deps.Cabal
-                  , common-deps.text
-                  , { bounds  = majorBoundVersion [ +0, +11 ]
-                    , package = "tasty"
-                    }
-                  , { bounds  = majorBoundVersion [ +1, +4 ]
-                    , package = "filepath"
-                    }
-                  , { bounds = anyVersion, package = "dhall-to-cabal" }
-                  , { bounds  = majorBoundVersion [ +2, +3 ]
-                    , package = "tasty-golden"
-                    }
-                  ]
-              , hs-source-dirs     = [ "golden-tests" ]
-              , main-is            = "GoldenTests.hs"
-              , name               = "golden-tests"
-              }
-          ]
+          { golden-tests =
+                ./dhall/defaults/TestSuite.dhall 
+              ⫽ { build-dependencies =
+                    [ common-deps.bytestring
+                    , common-deps.base
+                    , common-deps.Cabal
+                    , common-deps.text
+                    , { bounds  = majorBoundVersion [ +0, +11 ]
+                      , package = "tasty"
+                      }
+                    , { bounds  = majorBoundVersion [ +1, +4 ]
+                      , package = "filepath"
+                      }
+                    , { bounds = anyVersion, package = "dhall-to-cabal" }
+                    , { bounds  = majorBoundVersion [ +2, +3 ]
+                      , package = "tasty-golden"
+                      }
+                    ]
+                , hs-source-dirs     = [ "golden-tests" ]
+                , main-is            = "GoldenTests.hs"
+                }
+          }
       }

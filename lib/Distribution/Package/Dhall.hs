@@ -8,6 +8,7 @@
 
 module Distribution.Package.Dhall ( dhallFileToCabal ) where
 
+import GHC.Stack ( HasCallStack )
 import Control.Exception ( Exception, throwIO )
 import Data.Function ( (&) )
 import Data.Monoid ( (<>) )
@@ -72,108 +73,168 @@ packageName =
 
 
 
-packageDescription :: Dhall.Type Cabal.PackageDescription
-packageDescription =
-  makeRecord $ do
-    package <-
-      keyValue "package" packageIdentifier
+exprToPackageDescription
+  :: Expr.Expr Dhall.Parser.Src Dhall.TypeCheck.X -> Maybe Cabal.PackageDescription
+exprToPackageDescription expr = do
+  Expr.RecordLit fields <-
+    return expr
 
-    benchmarks <-
-      keyValue "benchmarks" ( list benchmark )
+  let
+    extractField :: LazyText.Text -> Dhall.Type a -> Maybe a
+    extractField k t =
+      Map.lookup k fields >>= Dhall.extract t
 
-    testSuites <-
-      keyValue "tests" ( list testSuite )
+    recordAsList
+      :: HasCallStack
+      => LazyText.Text
+      -> ( LazyText.Text -> name )
+      -> Dhall.Type ( name -> a )
+      -> Maybe [a]
+    recordAsList key makeName elementType =
+      case Map.lookup key fields of
+        Nothing ->
+          return []
 
-    executables <-
-      keyValue "executables" ( list executable )
+        Just ( Expr.RecordLit namedElements ) ->
+          Map.foldlWithKey
+            ( \rest name expr -> do
+                make <-
+                  Dhall.extract elementType expr
 
-    foreignLibs <-
-      keyValue "foreign-libraries" ( list foreignLib )
+                (:) <$> pure ( make ( makeName name ) ) <*> rest
+            )
+            ( return [] )
+            namedElements
 
-    subLibraries <-
-      keyValue "sub-libraries" ( list library )
+        _ ->
+          error $ LazyText.unpack key <> ": malformed"
 
-    library <-
-      keyValue "library" ( Dhall.maybe library )
+  package <-
+    extractField "package" packageIdentifier
 
-    customFieldsPD <-
-      keyValue "x-fields" ( list ( pair string string ) )
+  benchmarks <-
+    recordAsList
+      "benchmarks"
+      ( Cabal.mkUnqualComponentName . LazyText.unpack )
+      unnamedBenchmark
 
-    sourceRepos <-
-      keyValue "source-repos" ( list sourceRepo )
+  testSuites <-
+    recordAsList
+      "tests"
+      ( Cabal.mkUnqualComponentName . LazyText.unpack )
+      unnamedTestSuite
 
-    specVersionRaw <-
-      Left <$> ( keyValue "cabal-version" version )
+  executables <-
+    recordAsList
+      "executables"
+      ( Cabal.mkUnqualComponentName . LazyText.unpack )
+      unnamedExecutable
 
-    buildType <-
-      keyValue "build-type" ( Dhall.maybe buildType )
+  foreignLibs <-
+    recordAsList
+      "foreign-libraries"
+      ( Cabal.mkUnqualComponentName . LazyText.unpack )
+      unnamedForeignLib
 
-    license <-
-      keyValue "license" license
+  subLibraries <-
+    recordAsList
+      "sub-libraries"
+      ( Just . Cabal.mkUnqualComponentName . LazyText.unpack )
+      unnamedLibrary
 
-    licenseFiles <-
-      keyValue "license-files" ( list string )
+  library <-
+    -- 'library' is an option field
+    case Map.lookup "library" fields of
+      -- If ommited, there is no library in this cabal file.
+      Nothing ->
+        return Nothing
 
-    copyright <-
-      keyValue "copyright" string
+      -- If present, this library is the unnamed library in the cabal
+      -- file (the main "Library" block).
+      Just expr -> do
+        makeLibrary <-
+          Dhall.extract unnamedLibrary expr
 
-    maintainer <-
-      keyValue "maintainer" string
+        return ( Just ( makeLibrary Nothing ) )
 
-    author <-
-      keyValue "author" string
+  customFieldsPD <-
+    extractField "x-fields" ( list ( pair string string ) )
 
-    stability <-
-      keyValue "stability" string
+  sourceRepos <-
+    extractField "source-repos" ( list sourceRepo )
 
-    testedWith <-
-      keyValue "tested-with" ( list compiler )
+  specVersionRaw <-
+    Left <$> ( extractField "cabal-version" version )
 
-    homepage <-
-      keyValue "homepage" string
+  buildType <-
+    extractField "build-type" ( Dhall.maybe buildType )
 
-    pkgUrl <-
-      keyValue "package-url" string
+  license <-
+    extractField "license" license
 
-    bugReports <-
-      keyValue "bug-reports" string
+  licenseFiles <-
+    extractField "license-files" ( list string )
 
-    synopsis <-
-      keyValue "synopsis" string
+  copyright <-
+    extractField "copyright" string
 
-    description <-
-      keyValue "description" string
+  maintainer <-
+    extractField "maintainer" string
 
-    category <-
-      keyValue "category" string
+  author <-
+    extractField "author" string
 
-    -- Cabal documentation states
-    --
-    --   > YOU PROBABLY DON'T WANT TO USE THIS FIELD.
-    --
-    -- So I guess we won't use this field.
-    buildDepends <-
-      pure []
+  stability <-
+    extractField "stability" string
 
-    setupBuildInfo <-
-      pure Nothing
+  testedWith <-
+    extractField "tested-with" ( list compiler )
 
-    dataFiles <-
-      keyValue "data-files" ( list string )
+  homepage <-
+    extractField "homepage" string
 
-    dataDir <-
-      keyValue "data-directory" string
+  pkgUrl <-
+    extractField "package-url" string
 
-    extraSrcFiles <-
-      keyValue "extra-source-files" ( list string )
+  bugReports <-
+    extractField "bug-reports" string
 
-    extraTmpFiles <-
-      keyValue "extra-temp-files" ( list string )
+  synopsis <-
+    extractField "synopsis" string
 
-    extraDocFiles <-
-      keyValue "extra-doc-files" ( list string )
+  description <-
+    extractField "description" string
 
-    return Cabal.PackageDescription { .. }
+  category <-
+    extractField "category" string
+
+  -- Cabal documentation states
+  --
+  --   > YOU PROBABLY DON'T WANT TO USE THIS FIELD.
+  --
+  -- So I guess we won't use this field.
+  buildDepends <-
+    pure []
+
+  setupBuildInfo <-
+    pure Nothing
+
+  dataFiles <-
+    extractField "data-files" ( list string )
+
+  dataDir <-
+    extractField "data-directory" string
+
+  extraSrcFiles <-
+    extractField "extra-source-files" ( list string )
+
+  extraTmpFiles <-
+    extractField "extra-temp-files" ( list string )
+
+  extraDocFiles <-
+    extractField "extra-doc-files" ( list string )
+
+  return Cabal.PackageDescription { .. }
 
 
 
@@ -183,19 +244,16 @@ version =
 
 
 
-benchmark :: Dhall.Type Cabal.Benchmark
-benchmark =
+unnamedBenchmark :: Dhall.Type ( Cabal.UnqualComponentName -> Cabal.Benchmark )
+unnamedBenchmark =
   makeRecord $ do
     mainIs <-
       keyValue "main-is" string
 
-    benchmarkName <-
-      keyValue "name" unqualComponentName
-
     benchmarkBuildInfo <-
       buildInfo
 
-    pure
+    pure $ \benchmarkName ->
       Cabal.Benchmark
         { benchmarkInterface =
             Cabal.BenchmarkExeV10 ( Cabal.mkVersion [ 1, 0 ] ) mainIs
@@ -303,19 +361,16 @@ buildInfo = do
 
 
 
-testSuite :: Dhall.Type Cabal.TestSuite
-testSuite =
+unnamedTestSuite :: Dhall.Type ( Cabal.UnqualComponentName -> Cabal.TestSuite )
+unnamedTestSuite =
   makeRecord $ do
-    testName <-
-      keyValue "name" unqualComponentName
-
     mainIs <-
       keyValue "main-is" string
 
     testBuildInfo <-
       buildInfo
 
-    pure
+    pure $ \testName ->
       Cabal.TestSuite
         { testInterface =
             Cabal.TestSuiteExeV10 ( Cabal.mkVersion [ 1, 0 ] ) mainIs
@@ -330,12 +385,9 @@ unqualComponentName =
 
 
 
-executable :: Dhall.Type Cabal.Executable
-executable =
+unnamedExecutable :: Dhall.Type ( Cabal.UnqualComponentName -> Cabal.Executable )
+unnamedExecutable =
   makeRecord $ do
-    exeName <-
-      keyValue "name" unqualComponentName
-
     modulePath <-
       keyValue "main-is" string
 
@@ -345,16 +397,13 @@ executable =
     buildInfo <-
       buildInfo
 
-    pure Cabal.Executable { .. }
+    pure $ \exeName -> Cabal.Executable { .. }
 
 
 
-foreignLib :: Dhall.Type Cabal.ForeignLib
-foreignLib =
+unnamedForeignLib :: Dhall.Type ( Cabal.UnqualComponentName -> Cabal.ForeignLib )
+unnamedForeignLib =
   makeRecord $ do
-    foreignLibName <-
-      keyValue "name" unqualComponentName
-
     foreignLibType <-
       keyValue "type" foreignLibType
 
@@ -373,7 +422,7 @@ foreignLib =
     foreignLibModDefFile <-
       keyValue "module-definition-files" ( list string )
 
-    pure Cabal.ForeignLib { .. }
+    pure $ \foreignLibName -> Cabal.ForeignLib { .. }
 
 
 
@@ -388,12 +437,9 @@ foreignLibType =
 
 
 
-library :: Dhall.Type Cabal.Library
-library =
+unnamedLibrary :: Dhall.Type ( Maybe Cabal.UnqualComponentName -> Cabal.Library )
+unnamedLibrary =
   makeRecord $ do
-    libName <-
-      keyValue "name" ( Dhall.maybe unqualComponentName )
-
     libBuildInfo <-
       buildInfo
 
@@ -409,7 +455,7 @@ library =
     libExposed <-
       pure True
 
-    pure Cabal.Library { .. }
+    pure $ \libName -> Cabal.Library { .. }
 
 
 
@@ -462,53 +508,21 @@ moduleName =
 
 
 dhallFileToCabal :: FilePath -> IO Cabal.PackageDescription
-dhallFileToCabal file = do
+dhallFileToCabal file = Dhall.detailed $ do
   source <-
     LazyText.readFile file
 
-  Dhall.detailed ( input source packageDescription )
-
-
-
-input :: LazyText.Text -> Dhall.Type a -> IO a
-input source t = do
   delta <-
     return ( Directed "(input)" 0 0 0 0 )
 
-  expr  <-
+  expr <-
     throws ( Dhall.Parser.exprFromText delta source )
-
-  expr' <-
-    Dhall.Import.loadWithContext cabalContext expr
-
-  let
-    suffix =
-      Dhall.expected t
-        & build
-        & Builder.toLazyText
-        & LazyText.encodeUtf8
-        & LazyByteString.toStrict
-
-  let
-    annot =
-      case expr' of
-        Expr.Note ( Dhall.Parser.Src begin end bytes ) _ ->
-          Expr.Note
-            ( Dhall.Parser.Src begin end bytes' )
-            ( Expr.Annot expr' ( Dhall.expected t ) )
-
-          where
-
-          bytes' =
-            bytes <> " : " <> suffix
-
-        _ ->
-          Expr.Annot expr' ( Dhall.expected t )
+      >>= Dhall.Import.loadWithContext cabalContext
 
   _ <-
-    throws (Dhall.TypeCheck.typeWith cabalContext annot)
+    throws ( Dhall.TypeCheck.typeWith cabalContext expr )
 
-  case Dhall.extract t ( Dhall.Core.normalize expr' ) of
+  case exprToPackageDescription ( Dhall.Core.normalize expr ) of
     Just x  ->
       return x
 
